@@ -2,10 +2,21 @@
 /*
 Plugin Name: WP Limit Tags
 Description: This plugin allows you to limit the number of tags which can be added to a post from the post edit screen.
-Version: 0.1
+Version: 0.3
 Author: Mark Wilkinson
 Author URI: http://markwilkinson.me
 License: GPLv2 or later
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
 */
 
 /**
@@ -228,10 +239,75 @@ function wplt_admin_settings_content() {
 }
 
 /**
+ *
+ */
+function wplt_remove_quick_edit( $actions, $post ) {
+
+	/* get the array of post type on which to limit the tags */
+	$post_types = get_option( 'wplt_post_types' );
+	
+	/* check this post type is in the post types array */
+	if( in_array( $post->post_type, $post_types ) ) {
+		
+		/* remove the inline action to remove quick editing */
+		unset( $actions[ 'inline hide-if-no-js' ] );
+		
+	}
+	
+	return $actions;
+	
+}
+
+add_filter( 'post_row_actions', 'wplt_remove_quick_edit', 10, 2 );
+
+/**
+ * function wplt_remove_edit_bulk_action()
+ */
+function wplt_remove_edit_bulk_action( $actions ) {
+	
+	/* check if a post type is set from the url */
+	if( isset( $_GET[ 'post_type' ] ) ) {
+		
+		$post_type = $_GET[ 'post_type' ];
+	
+	/* no post type is set in url */
+	} else {
+		
+		/* must be posts */
+		$post_type = 'post';
+		
+	}
+	
+	/* get the array of post type on which to limit the tags */
+	$post_types = get_option( 'wplt_post_types' );
+	
+	/* if this post type is in the post type array */
+	if( in_array( $post_type, $post_types ) ) {
+		
+		/* remove the edit action */
+		unset( $actions[ 'edit' ] );
+		
+	}
+	
+	return $actions;
+	
+}
+
+add_filter( 'bulk_actions-edit-post', 'wplt_remove_edit_bulk_action' );
+
+/**
  * function wplt_limit_tags_js()
  * outputs the javascript for the plugin to work
  */
 function wplt_limit_tags_js() {
+	
+	/* get the current admin screen */
+	$screen = get_current_screen();
+	
+	/* if the screen base is not post */
+	if( $screen->base != 'post' ) {
+		return;
+	}
 	
 	/* get the array of post type on which to limit the tags */
 	$post_types = get_option( 'wplt_post_types' );
@@ -255,13 +331,21 @@ function wplt_limit_tags_js() {
 			
 			/* set the maximum number of tags allowed - pulled from options */
 			var maxtags = <?php echo intval( $maxtags ); ?>;
-			
+					
 			/**
-			 * function hideaddtagsbutton()
+			 * function disabletags()
 			 * this hides the tags button and disables the input when max tags is reached
 			 */
-			function hideaddtagsbutton() {
+			function disbaletags() {
 				$( "input.newtag" ).prop('disabled', true );
+				$( ".tagadd" ).css( 'visibility', 'hidden' );
+			}
+			
+			/**
+			 * function disabletagsbutton()
+			 * this hides the tags button when max tags is reached
+			 */
+			function disabletagsbutton() {
 				$( ".tagadd" ).css( 'visibility', 'hidden' );
 			}
 			
@@ -274,22 +358,51 @@ function wplt_limit_tags_js() {
 				$( ".tagadd" ).css( 'visibility', 'visible' );	
 			}
 			
+			function disableenter() {
+				
+			}
+			
 			/**
-			 * here we are checking for DOM changes within the tagcheclist element
+			 * here we are checking for DOM changes within the tagchecklist element
 			 * we a change is detected we run either hide or show
 			 * depending on whether the change is adding or removing an element
+			 * we also count number of tags added to the input and disable if more than max tags
 			 */
 			$(document).ready( function() {
+				
 				$( '.tagchecklist' ).bind( "DOMSubtreeModified", function() {
 					var count = $(".tagchecklist > span").length;
 					if( count >= maxtags ) {
-						hideaddtagsbutton();
+						disbaletags();
 					} else {
 						showaddtagsbutton();
 					}
 				});
+				
+				/* count tags as tying in input */
+				$( "input.newtag" ).bind("keyup keypress", function(e) {
+					
+					/* get teh number of tags the user has entered into the input box */
+					var tags = $( "input.newtag" ).val();					
+					var inputtedtags = tags.split( ',' ).length;
+					
+					/* get the number of tags already added */
+					var addedtags = $(".tagchecklist > span").length;
+					
+					/* work how many tags can be added now - based on the maxtags and the number already added */
+					var tagsleft = maxtags - addedtags;
+					
+					/* if the tags inputted are greater than maxtags or greater than tagsleft to add */
+					if( inputtedtags > maxtags || inputtedtags > tagsleft ) {
+						disabletagsbutton();
+						 e.preventDefault();
+					} else {
+						showaddtagsbutton();
+					}
+				});
+				
 			});
-			
+						
 		} )( jQuery );
 		
 	</script>
